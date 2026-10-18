@@ -156,6 +156,8 @@ footer .dis{font-size:13px;opacity:.75;border-top:1px solid rgba(255,255,255,.12
 .stat b{display:block;font-size:30px;color:var(--brand)}
 .stat span{color:var(--muted);font-size:14px}
 .rv{padding:18px;margin-bottom:14px}
+.qimg{display:block;max-width:100%;max-height:420px;border-radius:10px;margin:10px 0;border:1px solid var(--line);background:#fff}
+.oimg{display:block;max-width:100%;max-height:200px;border-radius:8px;margin-top:6px}
 .expl{margin-top:12px;background:#f3f8f9;border-left:4px solid var(--brand2);padding:10px 14px;border-radius:8px;font-size:15px}
 /* modal + toast */
 #modal{position:fixed;inset:0;background:rgba(10,30,38,.55);display:none;align-items:flex-start;justify-content:center;padding:4vh 16px;z-index:100;overflow:auto}
@@ -237,6 +239,7 @@ textarea.mono{font-family:ui-monospace,Menlo,monospace;font-size:13.5px}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script>
 /* ============ konfigurasi Supabase ============ */
 const SUPABASE_URL='https://mzrblchaoezhrawbmkdk.supabase.co';
@@ -250,6 +253,9 @@ const para=t=>esc(t).split(/\n{2,}/).map(p=>'<p>'+p.replace(/\n/g,'<br>')+'</p>'
 const fdate=d=>{try{return new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}catch(e){return d||''}};
 const today=()=>new Date().toISOString().slice(0,10);
 const LET='ABCDE';
+const imgs=a=>(a||[]).filter(Boolean).map(u=>`<img class="qimg" src="${esc(u)}" alt="" loading="lazy">`).join('');
+const oimg=u=>u?`<img class="oimg" src="${esc(u)}" alt="" loading="lazy">`:'';
+const hasOpt=(q,k)=>!!(q.opts[k]||(q.oimgs&&q.oimgs[k]));
 let toastT;
 function toast(msg,err){const t=$('#toast');t.textContent=msg;t.className='on'+(err?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>t.className='',2800)}
 
@@ -325,6 +331,9 @@ function seed(){
       disclaimer:'SAHWAHITA adalah platform belajar dan simulasi ujian mandiri. Konten disusun untuk tujuan edukasi dan latihan, tidak berafiliasi dengan BKN atau instansi pemerintah mana pun. Hasil latihan bukan jaminan kelulusan pada seleksi sesungguhnya.'},
     categories:[
       {id:'skd',name:'Seleksi Kompetensi Dasar (SKD)',parent:'',desc:'TWK, TIU, dan TKP untuk CPNS, PPPK, dan Sekolah Kedinasan.',image:''},
+      {id:'skd-twk',name:'TWK',parent:'skd',desc:'Tes Wawasan Kebangsaan',image:''},
+      {id:'skd-tiu',name:'TIU',parent:'skd',desc:'Tes Intelegensia Umum',image:''},
+      {id:'skd-tkp',name:'TKP',parent:'skd',desc:'Tes Karakteristik Pribadi',image:''},
       {id:'skb',name:'Seleksi Kompetensi Bidang (SKB)',parent:'',desc:'Latihan soal sesuai formasi jabatan.',image:''},
       {id:'skb-guru',name:'Guru',parent:'skb',desc:'',image:''},
       {id:'skb-adm',name:'Administrasi',parent:'skb',desc:'',image:''},
@@ -465,8 +474,8 @@ function tryoutView(){
   const nums=pkg.questions.map((_,k)=>`<button data-go="${k}" class="${T.flag.has(k)?'f':T.ans[k]>=0?'a':''} ${k===i?'c':''}">${k+1}</button>`).join('');
   return `<div class="wrap tryout"><div class="card tq">
    <div class="tqh"><span>${esc(pkg.title)} · Soal ${i+1} dari ${n}</span>${q.sec?`<span class="tag">${esc(q.sec)}</span>`:''}</div>
-   <div class="qtext">${para(q.q)}</div>
-   <div class="opts">${q.opts.map((o,k)=>o?`<button class="opt ${T.ans[i]===k?'sel':''}" data-opt="${k}"><b>${LET[k]}</b><span>${esc(o)}</span></button>`:'').join('')}</div>
+   <div class="qtext">${para(q.q)}${imgs(q.imgs)}</div>
+   <div class="opts">${q.opts.map((o,k)=>hasOpt(q,k)?`<button class="opt ${T.ans[i]===k?'sel':''}" data-opt="${k}"><b>${LET[k]}</b><span>${esc(o)}${oimg(q.oimgs&&q.oimgs[k])}</span></button>`:'').join('')}</div>
    <div class="tqf"><button class="btn ghost" data-nav="-1" ${i===0?'disabled':''}>← Sebelumnya</button><button class="btn ghost ${T.flag.has(i)?'on':''}" data-flag>⚑ Ragu-ragu</button><button class="btn" data-nav="1" ${i===n-1?'disabled':''}>Selanjutnya →</button></div></div>
    <aside class="card tside"><div class="timer" id="timer">--:--:--</div><div class="nums">${nums}</div>
    <div class="legend"><span><i style="background:var(--brand)"></i>Dijawab</span><span><i style="background:var(--accent)"></i>Ragu</span><span><i style="background:#fff;border:1.5px solid var(--line)"></i>Kosong</span></div>
@@ -493,10 +502,10 @@ function resultView(){
    <div class="stats"><div class="card stat"><b>${r.score}</b><span>Skor (0–100)</span></div><div class="card stat"><b style="color:var(--ok)">${r.correct}</b><span>Benar</span></div><div class="card stat"><b style="color:var(--bad)">${r.wrong}</b><span>Salah</span></div><div class="card stat"><b style="color:var(--muted)">${r.blank}</b><span>Kosong</span></div></div>
    ${Object.keys(r.sec).length>1?`<div class="row" style="margin-bottom:20px">${Object.entries(r.sec).map(([k,v])=>`<span class="tag" style="font-size:13px">${esc(k)}: ${v.c}/${v.t}</span>`).join('')}</div>`:''}
    <div class="row" style="margin-bottom:24px"><button class="btn accent" data-start="${p.id}">↻ Ulangi tryout</button><a class="btn ghost" href="#/paket/${p.id}">Kembali ke paket</a></div>
-   <h2>Pembahasan</h2>${p.questions.map((q,i)=>`<div class="card rv"><div class="tqh"><span>Soal ${i+1}</span>${q.sec?`<span class="tag">${esc(q.sec)}</span>`:''}</div><div class="qtext" style="font-size:17px">${para(q.q)}</div>
-    <div class="opts">${q.opts.map((o,k)=>o?`<div class="opt ${k===q.ans?'ok':r.ans[i]===k?'no':''}"><b>${LET[k]}</b><span>${esc(o)}</span></div>`:'').join('')}</div>
+   <h2>Pembahasan</h2>${p.questions.map((q,i)=>`<div class="card rv"><div class="tqh"><span>Soal ${i+1}</span>${q.sec?`<span class="tag">${esc(q.sec)}</span>`:''}</div><div class="qtext" style="font-size:17px">${para(q.q)}${imgs(q.imgs)}</div>
+    <div class="opts">${q.opts.map((o,k)=>hasOpt(q,k)?`<div class="opt ${k===q.ans?'ok':r.ans[i]===k?'no':''}"><b>${LET[k]}</b><span>${esc(o)}${oimg(q.oimgs&&q.oimgs[k])}</span></div>`:'').join('')}</div>
     <p style="margin:10px 0 0;font-size:14px;color:var(--muted)">Jawaban Anda: <b>${r.ans[i]>=0?LET[r.ans[i]]:'—'}</b> · Kunci: <b>${LET[q.ans]}</b></p>
-    ${q.expl?`<div class="expl">${para(q.expl)}</div>`:''}</div>`).join('')}</div>`;
+    ${(q.expl||(q.eimgs&&q.eimgs.length))?`<div class="expl">${q.expl?para(q.expl):''}${imgs(q.eimgs)}</div>`:''}</div>`).join('')}</div>`;
 }
 
 /* ============ forms & modal ============ */
@@ -512,6 +521,8 @@ function fieldHTML(f,v){
     case 'textarea':return `<div class="fld">${lbl}<textarea id="${id}" name="${f.name}" rows="${f.rows||4}" class="${f.mono?'mono':''}">${esc(v)}</textarea></div>`;
     case 'lines':return `<div class="fld">${lbl}<textarea id="${id}" name="${f.name}" rows="${f.rows||5}">${esc((v||[]).join('\n'))}</textarea></div>`;
     case 'select':return `<div class="fld">${lbl}<select id="${id}" name="${f.name}">${f.options.map(([val,t])=>`<option value="${esc(val)}" ${String(v??'')===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`;
+    case 'note':return `<div class="note">${f.html}</div>`;
+    case 'rawfile':return `<div class="fld">${lbl}<input type="file" id="${id}" name="${f.name}" accept="${f.accept||''}"></div>`;
     case 'checkbox':return `<label class="chk"><input type="checkbox" name="${f.name}" ${v?'checked':''}> ${esc(f.label)}</label>`;
     case 'image':return `<div class="fld">${lbl}<input type="file" id="${id}" name="${f.name}" accept="image/*">${v?`<div class="prev"><img src="${v}" alt=""><label><input type="checkbox" data-clear="${f.name}"> Hapus gambar ini</label></div>`:''}</div>`;
     case 'file':return `<div class="fld">${lbl}<input type="file" id="${id}" name="${f.name}">${v?`<div class="prev">File saat ini: <b>${esc(f.nameVal||'terunggah')}</b> <label><input type="checkbox" data-clear="${f.name}"> Hapus file</label></div>`:''}</div>`;
@@ -521,7 +532,9 @@ function fieldHTML(f,v){
 async function readForm(form,fields,old={}){
   const out={};
   for(const f of fields){
+    if(f.type==='note')continue;
     const el=form.elements[f.name];
+    if(f.type==='rawfile'){out[f.name]=el.files[0]||null;if(f.req&&!out[f.name])throw new Error(`${f.label} wajib dipilih`);continue}
     if(f.type==='checkbox'){out[f.name]=el.checked;continue}
     if(f.type==='lines'){out[f.name]=el.value.split('\n').map(s=>s.trim()).filter(Boolean);continue}
     if(f.type==='image'||f.type==='file'){
@@ -561,11 +574,13 @@ const catOpts=self=>[['','— Menu utama —'],...DB.categories.filter(c=>!c.par
 const CRUD={
  categories:{label:'Kategori / Menu Soal',title:'Kategori Bank Soal',sub:'Mengatur menu "Bank Soal". Pilih "Induk" untuk membuat sub-menu.',
   fields:it=>[{name:'name',label:'Nama kategori',req:1},{name:'parent',label:'Induk (jadikan sub-menu dari)',type:'select',options:catOpts(it&&it.id)},{name:'desc',label:'Deskripsi singkat',type:'textarea',rows:3},{name:'image',label:'Gambar kartu (opsional)',type:'image'}],
+  head:[['stdcats','⚡ Buat sub-menu TWK / TIU / TKP']],
   cols:[['Nama',x=>`<b>${esc(x.name)}</b>`],['Induk',x=>esc(byId(DB.categories,x.parent)?.name||'—')],['Jumlah paket',x=>DB.packages.filter(p=>p.catId===x.id).length]],
   blank:()=>({name:'',parent:'',desc:'',image:''})},
  packages:{label:'Paket Soal',title:'Paket Soal / Tryout',sub:'Buat paket tryout, lalu isi soalnya lewat tombol "Kelola Soal".',
   fields:()=>[{name:'title',label:'Judul paket',req:1},{name:'catId',label:'Masuk ke kategori',type:'select',options:DB.categories.map(c=>[c.id,catLabel(c)])},{name:'duration',label:'Durasi (menit)',type:'number',req:1},{name:'free',label:'Paket gratis (tanpa kode akses)',type:'checkbox'},{name:'code',label:'Kode akses (untuk paket premium)',hint:'Bagikan kode ini ke pelanggan.'},{name:'desc',label:'Deskripsi',type:'textarea',rows:3}],
   cols:[['Judul',x=>`<b>${esc(x.title)}</b>`],['Kategori',x=>esc(byId(DB.categories,x.catId)?.name||'—')],['Soal',x=>x.questions.length],['Tipe',x=>x.free?'<span class="tag free">GRATIS</span>':'<span class="tag prem">PREMIUM</span>']],
+  head:[['wordpkg','⬆ Upload paket dari Word']],
   extra:x=>`<a class="ib" href="#/admin/soal/${x.id}">Kelola Soal</a>`,
   blank:()=>({title:'',catId:DB.categories[0]?.id||'',duration:100,free:true,code:'',desc:'',questions:[]})},
  articles:{label:'Artikel',title:'Artikel',sub:'Tulis artikel, tips, dan berita.',prepend:1,
@@ -609,16 +624,18 @@ function dashView(){
 }
 function listView(key){
   const c=CRUD[key],items=DB[key];
-  return adminShell(key,`<div class="ah"><div><h1>${esc(c.title)}</h1><p>${esc(c.sub)}</p></div><button class="btn" data-act="add" data-key="${key}">+ Tambah</button></div>
+  return adminShell(key,`<div class="ah"><div><h1>${esc(c.title)}</h1><p>${esc(c.sub)}</p></div><div class="row">${(c.head||[]).map(h=>`<button class="btn ghost" data-act="${h[0]}" data-key="${key}">${h[1]}</button>`).join('')}<button class="btn" data-act="add" data-key="${key}">+ Tambah</button></div></div>
   ${items.length?`<div class="card tw"><table class="t"><thead><tr>${c.cols.map(x=>`<th>${x[0]}</th>`).join('')}<th></th></tr></thead><tbody>${items.map((it,i)=>`<tr>${c.cols.map(x=>`<td>${x[1](it)}</td>`).join('')}<td class="act">${c.extra?c.extra(it)+' ':''}<button class="ib" data-act="up" data-key="${key}" data-id="${it.id}" ${i===0?'disabled':''}>↑</button> <button class="ib" data-act="down" data-key="${key}" data-id="${it.id}" ${i===items.length-1?'disabled':''}>↓</button> <button class="ib" data-act="edit" data-key="${key}" data-id="${it.id}">Edit</button> <button class="ib del" data-act="del" data-key="${key}" data-id="${it.id}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Belum ada data. Klik "+ Tambah".</div>`}`);
 }
 function soalView(id){
   const p=byId(DB.packages,id);if(!p)return adminShell('packages',nf());
   return adminShell('packages',`<div class="ah"><div><h1>Soal: ${esc(p.title)}</h1><p>${p.questions.length} soal · <a href="#/admin/packages">← Kembali ke paket</a></p></div>
-   <div class="row"><button class="btn" data-qact="add">+ Tambah soal</button><button class="btn ghost" data-qact="import">Impor teks</button><button class="btn ghost" data-qact="export">Ekspor teks</button></div></div>
-  ${p.questions.length?`<div class="card tw"><table class="t"><thead><tr><th>No</th><th>Soal</th><th>Bagian</th><th>Kunci</th><th></th></tr></thead><tbody>${p.questions.map((q,i)=>`<tr><td>${i+1}</td><td>${esc(q.q.slice(0,110))}${q.q.length>110?'…':''}</td><td>${esc(q.sec||'—')}</td><td><b>${LET[q.ans]}</b></td><td class="act"><button class="ib" data-qact="up" data-i="${i}" ${i===0?'disabled':''}>↑</button> <button class="ib" data-qact="down" data-i="${i}" ${i===p.questions.length-1?'disabled':''}>↓</button> <button class="ib" data-qact="edit" data-i="${i}">Edit</button> <button class="ib del" data-qact="del" data-i="${i}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Belum ada soal. Tambahkan satu per satu atau impor banyak soal sekaligus.</div>'}`);
+   <div class="row"><button class="btn" data-qact="add">+ Tambah soal</button><button class="btn accent" data-qact="word">⬆ Impor Word (.docx)</button><button class="btn ghost" data-qact="import">Impor teks</button><button class="btn ghost" data-qact="export">Ekspor teks</button></div></div>
+  ${p.questions.length?`<div class="card tw"><table class="t"><thead><tr><th>No</th><th>Soal</th><th>Bagian</th><th>Kunci</th><th></th></tr></thead><tbody>${p.questions.map((q,i)=>`<tr><td>${i+1}</td><td>${esc((q.q||'(soal bergambar)').slice(0,110))}${(q.q||'').length>110?'…':''}${((q.imgs&&q.imgs.length)||(q.oimgs&&q.oimgs.some(Boolean)))?' 🖼':''}</td><td>${esc(q.sec||'—')}</td><td><b>${LET[q.ans]}</b></td><td class="act"><button class="ib" data-qact="up" data-i="${i}" ${i===0?'disabled':''}>↑</button> <button class="ib" data-qact="down" data-i="${i}" ${i===p.questions.length-1?'disabled':''}>↓</button> <button class="ib" data-qact="edit" data-i="${i}">Edit</button> <button class="ib del" data-qact="del" data-i="${i}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Belum ada soal. Tambahkan satu per satu atau impor banyak soal sekaligus.</div>'}`);
 }
-const QF=[{name:'sec',label:'Bagian (opsional)',hint:'Contoh: TWK, TIU, TKP. Dipakai untuk rekap skor.'},{name:'q',label:'Pertanyaan',type:'textarea',rows:4,req:1},...[...LET].map((l,i)=>({name:'o'+i,label:'Pilihan '+l,req:i<2})),{name:'ans',label:'Jawaban benar',type:'select',options:[...LET].map((l,i)=>[i,l])},{name:'expl',label:'Pembahasan (opsional)',type:'textarea',rows:3}];
+const QF=[{name:'sec',label:'Bagian (opsional)',hint:'Contoh: TWK, TIU, TKP. Dipakai untuk rekap skor.'},{name:'q',label:'Pertanyaan',type:'textarea',rows:4,hint:'Boleh dikosongkan jika soal hanya berupa gambar.'},{name:'qimg',label:'Gambar soal (opsional)',type:'image'},
+ ...[...LET].flatMap((l,i)=>[{name:'o'+i,label:'Pilihan '+l},{name:'oimg'+i,label:'Gambar pilihan '+l+' (opsional)',type:'image'}]),
+ {name:'ans',label:'Jawaban benar',type:'select',options:[...LET].map((l,i)=>[i,l])},{name:'expl',label:'Pembahasan (opsional)',type:'textarea',rows:3},{name:'eimg',label:'Gambar pembahasan (opsional)',type:'image'}];
 function parseBulk(txt){
   const blocks=txt.replace(/\r/g,'').split(/\n\s*\n+/).map(b=>b.trim()).filter(Boolean),out=[],errs=[];
   blocks.forEach((b,bi)=>{
@@ -668,6 +685,8 @@ function crudSave(key,item,vals){
 }
 async function adminAction(a,key,id){
   const arr=DB[key],it=id&&byId(arr,id),c=CRUD[key];
+  if(a==='stdcats')return stdCatsModal();
+  if(a==='wordpkg')return wordPkgModal();
   if(a==='add'||a==='edit'){
     if(key==='packages'&&!DB.categories.length)return toast('Buat kategori dulu',1);
     formModal({title:(it?'Edit ':'Tambah ')+c.title,fields:c.fields(it),values:it||c.blank(),wide:key==='articles',onSave:async v=>{
@@ -688,22 +707,121 @@ async function adminAction(a,key,id){
 async function questionAction(a,i,pid){
   const p=byId(DB.packages,pid),qs=p.questions;
   if(a==='add'||a==='edit'){
-    const q=a==='edit'?qs[+i]:null,vals=q?{sec:q.sec,q:q.q,ans:q.ans,expl:q.expl,...Object.fromEntries(q.opts.map((o,k)=>['o'+k,o]))}:{ans:0};
+    const q=a==='edit'?qs[+i]:null,vals=q?{sec:q.sec,q:q.q,ans:q.ans,expl:q.expl,qimg:(q.imgs||[])[0]||'',eimg:(q.eimgs||[])[0]||'',...Object.fromEntries(q.opts.map((o,k)=>['o'+k,o])),...Object.fromEntries([0,1,2,3,4].map(k=>['oimg'+k,(q.oimgs||[])[k]||'']))}:{ans:0};
     formModal({title:q?'Edit soal':'Tambah soal',fields:QF,values:vals,wide:1,onSave:async v=>{
-      const n={sec:v.sec,q:v.q,opts:[0,1,2,3,4].map(k=>v['o'+k]),ans:+v.ans,expl:v.expl};
-      if(!n.opts[n.ans])throw new Error('Pilihan untuk jawaban benar tidak boleh kosong');
+      const n={sec:v.sec,q:v.q,opts:[0,1,2,3,4].map(k=>v['o'+k]),oimgs:[0,1,2,3,4].map(k=>v['oimg'+k]||''),ans:+v.ans,expl:v.expl,
+        imgs:[v.qimg,...((q&&q.imgs)||[]).slice(1)].filter(Boolean),eimgs:[v.eimg,...((q&&q.eimgs)||[]).slice(1)].filter(Boolean)};
+      if(!n.q&&!n.imgs.length)throw new Error('Isi teks soal atau unggah gambar soal');
+      if(n.opts.filter((o,k)=>o||n.oimgs[k]).length<2)throw new Error('Minimal 2 pilihan jawaban (teks atau gambar)');
+      if(!n.opts[n.ans]&&!n.oimgs[n.ans])throw new Error('Pilihan untuk jawaban benar tidak boleh kosong');
       q?Object.assign(q,n):qs.push(n);await save();render();toast('Soal tersimpan')}});
   }else if(a==='del'){if(!confirm('Hapus soal ini?'))return;qs.splice(+i,1);await save();render()}
   else if(a==='up'||a==='down'){const x=+i,y=a==='up'?x-1:x+1;if(y<0||y>=qs.length)return;[qs[x],qs[y]]=[qs[y],qs[x]];await save();render()}
+  else if(a==='word'){wordImportModal(p)}
   else if(a==='import'){
     formModal({title:'Impor banyak soal dari teks',wide:1,saveText:'Impor',fields:[{name:'txt',label:'Tempel soal di sini',type:'textarea',rows:14,mono:1,hint:'Pisahkan antar soal dengan satu baris kosong. Format: teks soal, pilihan A. s/d E., lalu "Jawaban: B", opsional "Bagian: TWK" dan "Pembahasan: ...".'}],
       values:{txt:'Ibu kota Indonesia saat ini adalah...\nA. Bandung\nB. Jakarta\nC. Surabaya\nD. Medan\nE. Makassar\nJawaban: B\nBagian: TWK\nPembahasan: Jakarta adalah ibu kota yang berlaku saat ini.'},
       onSave:async v=>{const r=parseBulk(v.txt);if(!r.out.length)throw new Error('Tidak ada soal valid. Cek format (butuh min. 2 pilihan dan baris Jawaban).');
         qs.push(...r.out);await save();render();toast(`${r.out.length} soal diimpor`+(r.errs.length?`, blok ke-${r.errs.join(', ')} dilewati`:''),!!r.errs.length)}});
   }else if(a==='export'){
-    formModal({title:'Ekspor soal (teks)',wide:1,saveText:'Tutup',fields:[{name:'t',label:'Salin teks berikut sebagai cadangan atau untuk dipindah ke paket lain',type:'textarea',rows:16,mono:1}],values:{t:toBulk(qs)},onSave:()=>{}});
+    formModal({title:'Ekspor soal (teks)',wide:1,saveText:'Tutup',fields:[{name:'t',label:'Salin teks berikut sebagai cadangan (gambar tidak ikut diekspor)',type:'textarea',rows:16,mono:1}],values:{t:toBulk(qs)},onSave:()=>{}});
   }
 }
+
+/* ============ impor Word (.docx) & sub-menu standar ============ */
+const OKIMG=/^data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml)/i;
+function shrinkData(u){return new Promise(res=>{
+  if(!/^data:image\/(png|jpe?g|webp|bmp)/i.test(u))return res(u);
+  const im=new Image();
+  im.onload=()=>{try{const M=1400,k=Math.min(1,M/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.88))}catch(e){res(u)}};
+  im.onerror=()=>res(u);im.src=u});}
+async function parseDocx(file,defSec){
+  if(!window.mammoth)throw new Error('Library Word gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.');
+  if(!/\.docx$/i.test(file.name))throw new Error('Gunakan file .docx (Word). Jika file .doc, buka di Word lalu Save As .docx.');
+  const buf=await file.arrayBuffer();
+  const res=await mammoth.convertToHtml({arrayBuffer:buf},{convertImage:mammoth.images.imgElement(im=>im.read('base64').then(b=>({src:'data:'+im.contentType+';base64,'+b})))});
+  const doc=new DOMParser().parseFromString(res.value,'text/html');
+  const sel='p,li,h1,h2,h3,h4,h5,h6';
+  let skipped=0;
+  const lines=[...doc.body.querySelectorAll(sel)].filter(e=>!e.querySelector(sel)).map(e=>({
+    t:(e.textContent||'').replace(/ /g,' ').replace(/\s+/g,' ').trim(),
+    im:[...e.querySelectorAll('img')].map(i=>i.getAttribute('src')).filter(u=>{if(OKIMG.test(u))return true;skipped++;return false})}));
+  const hasNum=lines.some(l=>/^\d+\s*[.)]\s/.test(l.t));
+  const out=[],warn=[];let cur=null,pend=defSec||'';
+  const fresh=()=>({sec:pend,q:[],qi:[],opts:['','','','',''],oi:['','','','',''],ans:-1,expl:[],ei:[],mode:'q',last:-1});
+  const flush=()=>{
+    if(!cur)return;const c=cur;cur=null;
+    const stem=c.q.join('\n').trim(),n=out.length+warn.length+1;
+    const ok=k=>c.opts[k]||c.oi[k];
+    if((!stem&&!c.qi.length)||[0,1,2,3,4].filter(ok).length<2||c.ans<0||!ok(c.ans)){warn.push(n);return}
+    out.push({sec:c.sec,q:stem,imgs:c.qi,opts:c.opts.map(o=>o.trim()),oimgs:c.oi.map(x=>x||''),ans:c.ans,expl:c.expl.join('\n').trim(),eimgs:c.ei});
+  };
+  for(const L of lines){
+    const t=L.t;let m;
+    if(!t&&!L.im.length){if(cur&&cur.ans>=0)flush();continue}
+    if((m=t.match(/^(?:bagian|kategori)\s*[:=]\s*(.+)$/i))){if(cur)cur.sec=m[1].trim();else pend=m[1].trim();continue}
+    if((m=t.match(/^(\d+)\s*[.)]\s*(.*)$/))&&(!cur||cur.ans>=0||cur.last>=1)){
+      flush();cur=fresh();cur.mode='q';if(m[2])cur.q.push(m[2]);cur.qi.push(...L.im);continue}
+    if(!cur){if(hasNum)continue;cur=fresh()}
+    if(cur.mode!=='e'&&(m=t.match(/^([A-Ea-e])\s*[.)]\s*(.*)$/))&&LET.indexOf(m[1].toUpperCase())>cur.last&&(cur.q.length||cur.qi.length||cur.last>=0)){
+      const k=LET.indexOf(m[1].toUpperCase());cur.last=k;cur.mode='o';cur.opts[k]=m[2];if(L.im.length)cur.oi[k]=L.im[0];continue}
+    if((m=t.match(/^(?:jawaban|kunci)(?:\s+benar)?\s*[:=]\s*([A-Ea-e])/i))){cur.ans=LET.indexOf(m[1].toUpperCase());cur.mode='a';cur.ei.push(...L.im);continue}
+    if((m=t.match(/^(?:pembahasan|penjelasan)\s*[:=]?\s*(.*)$/i))){cur.mode='e';if(m[1])cur.expl.push(m[1]);cur.ei.push(...L.im);continue}
+    if(cur.mode==='q'){if(t)cur.q.push(t);cur.qi.push(...L.im)}
+    else if(cur.mode==='o'){if(t)cur.opts[cur.last]=(cur.opts[cur.last]+' '+t).trim();if(L.im.length&&!cur.oi[cur.last])cur.oi[cur.last]=L.im[0]}
+    else{if(t&&cur.mode==='e')cur.expl.push(t);cur.ei.push(...L.im)}
+  }
+  flush();
+  return{qs:out,warn,skipped};
+}
+async function docxToQuestions(file,defSec){
+  const r=await parseDocx(file,defSec);
+  if(!r.qs.length)throw new Error('Tidak ada soal valid di file Word. Pastikan format: "1. soal", "A. pilihan", "Jawaban: B" (ketik manual, bukan penomoran otomatis Word).');
+  const urls=[...new Set(r.qs.flatMap(q=>[...q.imgs,...q.oimgs.filter(Boolean),...q.eimgs]))],map={};
+  let n=0;
+  for(const u of urls){n++;toast(`Mengunggah gambar ${n} dari ${urls.length}…`);map[u]=await toStorage(await shrinkData(u),'soal.jpg')}
+  const mp=a=>a.map(u=>map[u]||u);
+  r.qs.forEach(q=>{q.imgs=mp(q.imgs);q.oimgs=q.oimgs.map(u=>u?map[u]||u:'');q.eimgs=mp(q.eimgs)});
+  return r;
+}
+const wordNote={name:'n',type:'note',html:'<b>Format di Word</b> (ketik manual, jangan pakai penomoran otomatis):<br>1. Teks soal… (gambar boleh disisipkan langsung di bawahnya)<br>A. Pilihan A (gambar boleh)<br>B. Pilihan B<br>… sampai E.<br>Jawaban: B<br>Pembahasan: …(opsional, gambar boleh)<br>Bagian: TWK (opsional)<br>Pisahkan antar soal dengan baris kosong atau cukup mulai nomor berikutnya.'};
+const doneMsg=r=>`${r.qs.length} soal masuk`+(r.warn.length?`, soal ke-${r.warn.join(', ')} dilewati (format kurang lengkap)`:'')+(r.skipped?`, ${r.skipped} gambar tidak didukung (EMF/WMF), sisipkan ulang sebagai PNG/JPG`:'');
+function wordImportModal(pkg){
+  formModal({title:'Impor soal dari Word (.docx)',wide:1,saveText:'Impor',fields:[
+    {name:'file',label:'File Word (.docx)',type:'rawfile',req:1,accept:'.docx'},
+    {name:'sec',label:'Bagian untuk semua soal (opsional)',hint:'Mis. TWK. Bisa diabaikan jika di Word sudah ada baris "Bagian:".'},wordNote],
+    onSave:async v=>{const r=await docxToQuestions(v.file,v.sec);pkg.questions.push(...r.qs);await save();render();toast(doneMsg(r),!!(r.warn.length||r.skipped))}});
+}
+function wordPkgModal(){
+  if(!DB.categories.length)return toast('Buat kategori dulu (bisa pakai tombol Buat sub-menu TWK/TIU/TKP)',1);
+  formModal({title:'Upload paket soal dari Word (.docx)',wide:1,saveText:'Upload & buat paket',fields:[
+    {name:'file',label:'File Word (.docx)',type:'rawfile',req:1,accept:'.docx'},
+    {name:'title',label:'Judul paket',req:1},
+    {name:'catId',label:'Masuk ke kategori',type:'select',options:DB.categories.map(c=>[c.id,catLabel(c)])},
+    {name:'duration',label:'Durasi (menit)',type:'number',req:1},
+    {name:'free',label:'Paket gratis (tanpa kode akses)',type:'checkbox'},
+    {name:'code',label:'Kode akses (untuk paket premium)'},
+    {name:'sec',label:'Bagian untuk semua soal (opsional)',hint:'Mis. TWK. Bisa diabaikan jika di Word sudah ada baris "Bagian:".'},wordNote],
+    values:{duration:100,free:true,catId:(byId(DB.categories,'skd-twk')||DB.categories[0]).id},
+    onSave:async v=>{const r=await docxToQuestions(v.file,v.sec);
+      DB.packages.push({id:uid(),catId:v.catId,title:v.title,duration:v.duration,free:v.free,code:v.code,desc:'',questions:r.qs});
+      await save();render();toast(doneMsg(r),!!(r.warn.length||r.skipped))}});
+}
+function stdCatsModal(){
+  const roots=DB.categories.filter(c=>!c.parent);
+  formModal({title:'Buat sub-menu TWK, TIU, TKP',saveText:'Buat sub-menu',fields:[
+    {name:'n',type:'note',html:'Membuat tiga sub-menu <b>TWK</b>, <b>TIU</b>, <b>TKP</b> di bawah menu induk pilihan Anda. Yang sudah ada tidak digandakan.'},
+    {name:'parent',label:'Letakkan di bawah menu',type:'select',options:[['__new','+ Buat menu baru: Seleksi Kompetensi Dasar (SKD)'],...roots.map(c=>[c.id,c.name])]}],
+    values:{parent:byId(DB.categories,'skd')?'skd':'__new'},
+    onSave:async v=>{
+      let pid=v.parent;
+      if(pid==='__new'){let sk=byId(DB.categories,'skd');if(!sk){sk={id:'skd',name:'Seleksi Kompetensi Dasar (SKD)',parent:'',desc:'TWK, TIU, dan TKP untuk CPNS, PPPK, dan Sekolah Kedinasan.',image:''};DB.categories.unshift(sk)}pid=sk.id}
+      let n=0;
+      [['TWK','Tes Wawasan Kebangsaan'],['TIU','Tes Intelegensia Umum'],['TKP','Tes Karakteristik Pribadi']].forEach(([k,d])=>{
+        if(!DB.categories.some(c=>c.parent===pid&&c.name.toUpperCase().startsWith(k))){DB.categories.push({id:uid(),name:k,parent:pid,desc:d,image:''});n++}});
+      await save();render();toast(n?`${n} sub-menu dibuat`:'Sub-menu sudah ada')}});
+}
+
 function download(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'application/json'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
 
 /* ============ router ============ */
