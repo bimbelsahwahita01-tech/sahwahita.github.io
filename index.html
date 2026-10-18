@@ -236,7 +236,11 @@ textarea.mono{font-family:ui-monospace,Menlo,monospace;font-size:13.5px}
 <div id="modal"></div>
 <div id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
+/* ============ konfigurasi Supabase ============ */
+const SUPABASE_URL='https://mzrblchaoezhrawbmkdk.supabase.co';
+const SUPABASE_KEY='sb_publishable_do1eWtuMBu6t8WmYql4hkg_or2Tmuo1';
 /* ============ util ============ */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -249,18 +253,55 @@ const LET='ABCDE';
 let toastT;
 function toast(msg,err){const t=$('#toast');t.textContent=msg;t.className='on'+(err?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>t.className='',2800)}
 
-/* ============ storage (IndexedDB) ============ */
-let DB=null,memOnly=false;
-const idb={
-  open(){return new Promise((res,rej)=>{const r=indexedDB.open('sahwahita',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})},
-  async get(k){const d=await this.open();return new Promise((res,rej)=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})},
-  async set(k,v){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
-};
-async function save(){if(memOnly)return;try{await idb.set('db',DB)}catch(e){memOnly=true;toast('Penyimpanan browser tidak tersedia, data hanya sementara',1)}}
+/* ============ data (Supabase) ============ */
+let DB=null,sb=null,ADMIN=false,SNAP={};
+const KINDS=['categories','packages','articles','materi','events','prices','faqs'];
+const stable=v=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v;
+const sig=(pos,d)=>pos+JSON.stringify(d,(k,v)=>stable(v));
+function rowsOf(){
+  const r=[{kind:'settings',id:'main',pos:0,data:DB.settings}];
+  KINDS.forEach(k=>DB[k].forEach((it,i)=>r.push({kind:k,id:it.id,pos:i,data:it})));
+  return r;
+}
+async function loadData(){
+  const {data,error}=await sb.from('items').select('kind,id,pos,data').order('pos');
+  if(error)throw error;
+  const base=seed();DB={settings:base.settings};KINDS.forEach(k=>DB[k]=[]);SNAP={};
+  (data||[]).forEach(r=>{
+    if(r.kind==='settings')Object.assign(DB.settings,r.data);else if(DB[r.kind])DB[r.kind].push(r.data);
+    SNAP[r.kind+'|'+r.id]=sig(r.pos,r.data);
+  });
+}
+async function save(){
+  try{
+    if(!ADMIN)throw new Error('Login admin diperlukan untuk menyimpan');
+    const next={},up=[];
+    rowsOf().forEach(r=>{const k=r.kind+'|'+r.id,g=sig(r.pos,r.data);next[k]=g;if(SNAP[k]!==g)up.push(r)});
+    const del=Object.keys(SNAP).filter(k=>!(k in next));
+    for(let i=0;i<up.length;i+=20){const {error}=await sb.from('items').upsert(up.slice(i,i+20));if(error)throw new Error(error.message)}
+    for(const k of del){const [kind,id]=k.split('|');const {error}=await sb.from('items').delete().eq('kind',kind).eq('id',id);if(error)throw new Error(error.message)}
+    SNAP=next;
+  }catch(e){try{await loadData()}catch(_){}throw e}
+}
 async function load(){
-  try{DB=await idb.get('db')}catch(e){memOnly=true}
-  if(!DB){DB=seed();await save()}
-  for(const k of ['categories','packages','articles','materi','events','prices','faqs'])DB[k]=DB[k]||[];
+  if(!window.supabase){DB=seed();KINDS.forEach(k=>DB[k]=[]);return toast('Library Supabase gagal dimuat. Periksa koneksi internet.',1)}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  const {data}=await sb.auth.getSession();ADMIN=!!(data&&data.session);
+  sb.auth.onAuthStateChange((ev,ses)=>{const was=ADMIN;ADMIN=!!ses;if(was!==ADMIN)setTimeout(render,0)});
+  try{await loadData()}catch(e){
+    DB=seed();KINDS.forEach(k=>DB[k]=[]);
+    toast('Gagal memuat data: '+(e.message||e)+'. Pastikan SQL tabel sudah dijalankan.',1);
+  }
+}
+async function toStorage(dataUrl,name){
+  if(!dataUrl||!dataUrl.startsWith('data:'))return dataUrl;
+  const blob=await (await fetch(dataUrl)).blob();
+  const ext=((name||'').match(/\.([A-Za-z0-9]{1,8})$/)||[])[1]||(blob.type.split('/')[1]||'bin').replace('jpeg','jpg').replace(/\+.*/,'');
+  const base=(name||'file').replace(/\.[^.]*$/,'').replace(/[^A-Za-z0-9_-]+/g,'-').slice(0,40)||'file';
+  const path=`${Date.now()}-${uid()}-${base}.${ext}`;
+  const {error}=await sb.storage.from('uploads').upload(path,blob,{contentType:blob.type||'application/octet-stream'});
+  if(error)throw new Error('Upload gagal: '+error.message);
+  return sb.storage.from('uploads').getPublicUrl(path).data.publicUrl;
 }
 
 /* ============ seed ============ */
@@ -274,7 +315,7 @@ function seed(){
     q('TKP','Menjelang tenggat, rekan satu tim meminta bantuan padahal pekerjaan Anda sendiri hampir selesai. Sikap Anda...',['Menolak karena itu bukan tugas Anda','Membantu setelah pekerjaan sendiri selesai dan memberi tahu pimpinan','Mengabaikan permintaan itu','Meminta orang lain membantu tanpa menjelaskan','Membantu sekarang dan membiarkan pekerjaan sendiri terlambat'],1,'Menyelesaikan tanggung jawab sendiri lebih dulu lalu membantu, sambil berkomunikasi dengan pimpinan, adalah sikap paling profesional.')
   ];
   return{
-    settings:{siteName:'SAHWAHITA',tagline:'Platform Tryout & Simulasi CAT Online',logo:'',password:'admin123',
+    settings:{siteName:'SAHWAHITA',tagline:'Platform Tryout & Simulasi CAT Online',logo:'',
       heroBadge:'Tryout CPNS · PPPK · Sekolah Kedinasan',
       heroTitle:'Latihan CAT Lebih Terarah, Lulus Lebih Percaya Diri',
       heroSub:'Kerjakan tryout SKD, SKB, dan seleksi lanjutan dengan sistem yang mirip ujian sebenarnya, lengkap dengan skor otomatis dan pembahasan.',
@@ -487,7 +528,7 @@ async function readForm(form,fields,old={}){
       const file=el.files[0],clear=form.querySelector(`[data-clear="${f.name}"]`)?.checked;
       if(file){
         if(file.size>MAXF)throw new Error(`File "${file.name}" lebih dari 8 MB`);
-        out[f.name]=f.type==='image'?await readImage(file):await readFile(file);
+        out[f.name]=await toStorage(f.type==='image'?await readImage(file):await readFile(file),file.name);
         if(f.type==='file')out[f.name+'Name']=file.name;
       }else if(clear){out[f.name]='';if(f.type==='file')out[f.name+'Name']=''}
       else{out[f.name]=old[f.name]||'';if(f.type==='file')out[f.name+'Name']=old[f.name+'Name']||''}
@@ -514,7 +555,7 @@ function formModal({title,fields,values={},onSave,wide,saveText}){
 }
 
 /* ============ admin ============ */
-const isAdmin=()=>sessionStorage.getItem('sw_admin')==='1';
+const isAdmin=()=>ADMIN;
 const catLabel=c=>{const p=c.parent&&byId(DB.categories,c.parent);return(p?p.name+' › ':'')+c.name};
 const catOpts=self=>[['','— Menu utama —'],...DB.categories.filter(c=>!c.parent&&c.id!==self).map(c=>[c.id,c.name])];
 const CRUD={
@@ -555,15 +596,16 @@ function adminShell(active,inner){
 }
 function loginView(){
   return `<form class="card login" id="loginf"><h2>Login Admin</h2><p style="color:var(--muted)">${esc(S().siteName)}</p>
-   <div class="fld"><label>Password</label><input type="password" name="pw" autofocus></div><button class="btn full">Masuk</button>
-   ${S().password==='admin123'?'<p class="note" style="margin-top:16px">Password awal: <b>admin123</b>. Segera ganti di menu Pengaturan.</p>':''}<p style="text-align:center;margin:14px 0 0"><a href="#/">← Kembali ke website</a></p></form>`;
+   <div class="fld"><label>Email</label><input type="email" name="em" autocomplete="username" autofocus></div>
+   <div class="fld"><label>Password</label><input type="password" name="pw" autocomplete="current-password"></div><button class="btn full">Masuk</button>
+   <p style="text-align:center;margin:14px 0 0"><a href="#/">← Kembali ke website</a></p></form>`;
 }
 function dashView(){
   const st=[['categories','Kategori',DB.categories.length],['packages','Paket soal',DB.packages.length],['questions','Total soal',DB.packages.reduce((a,p)=>a+p.questions.length,0),'packages'],['articles','Artikel',DB.articles.length],['materi','Materi',DB.materi.length],['events','Event',DB.events.length]];
   const size=(JSON.stringify(DB).length/1048576).toFixed(2);
   return adminShell('dashboard',`<div class="ah"><div><h1>Dashboard</h1><p>Kelola seluruh isi website ${esc(S().siteName)} dari sini.</p></div></div>
   <div class="dash">${st.map(s=>`<a class="card" href="#/admin/${s[3]||s[0]}"><b>${s[2]}</b>${s[1]}</a>`).join('')}</div>
-  <div class="note">Data tersimpan di browser perangkat ini (±${size} MB). Lakukan <a href="#/admin/backup">backup</a> secara berkala, dan lihat catatan penting di halaman tersebut.</div>`);
+  <div class="note">Data tersimpan di Supabase (±${size} MB teks). Lakukan <a href="#/admin/backup">backup</a> secara berkala.</div>`);
 }
 function listView(key){
   const c=CRUD[key],items=DB[key];
@@ -599,16 +641,16 @@ function settingsView(){
    {name:'heroBadge',label:'Beranda: label kecil'},{name:'heroTitle',label:'Beranda: judul besar'},{name:'heroSub',label:'Beranda: sub judul',type:'textarea',rows:3},{name:'heroBtn',label:'Beranda: teks tombol'},
    {name:'whatsapp',label:'Nomor WhatsApp',hint:'Format internasional tanpa +, contoh 6281234567890'},{name:'email',label:'Email'},{name:'instagram',label:'Tautan Instagram'},{name:'tiktok',label:'Tautan TikTok'},
    {name:'about',label:'Halaman Tentang Kami',type:'textarea',rows:6},{name:'petunjuk',label:'Halaman Petunjuk',type:'textarea',rows:6},{name:'disclaimer',label:'Disclaimer footer',type:'textarea',rows:3},
-   {name:'newPassword',label:'Password admin baru',type:'password',hint:'Kosongkan jika tidak ingin mengganti (minimal 6 karakter).'}];
+   {name:'newPassword',label:'Password admin baru',type:'password',hint:'Kosongkan jika tidak ingin mengganti (minimal 6 karakter). Password login admin diatur lewat Supabase Auth.'}];
   window._sf=f;
   return adminShell('settings',`<div class="ah"><div><h1>Pengaturan</h1><p>Nama, tampilan beranda, kontak, dan teks halaman.</p></div></div><form id="setf" class="card" style="padding:24px;max-width:760px" novalidate>${f.map(x=>fieldHTML(x,S()[x.name])).join('')}<button class="btn">Simpan pengaturan</button></form>`);
 }
 function backupView(){
   return adminShell('backup',`<div class="ah"><div><h1>Backup & Restore</h1></div></div>
-  <div class="note"><b>Penting:</b> versi ini menyimpan data di browser (IndexedDB) komputer yang dipakai admin. Pengunjung di perangkat lain tidak akan melihat perubahan Anda. Untuk dipakai publik, backup data dari sini, lalu pasang di hosting dengan backend (atau minta dibuatkan versi dengan database server). Login admin di file ini juga hanya pengaman sederhana di sisi browser.</div>
+  <div class="note">Data tersimpan di database Supabase dan dibaca semua pengunjung. Tetap unduh backup berkala sebagai cadangan.</div>
   <div class="card" style="padding:24px;max-width:640px"><h3>Unduh backup</h3><p>Seluruh kategori, soal, artikel, materi, dan pengaturan (tanpa password).</p><button class="btn" data-bk="export">⬇ Unduh backup (.json)</button>
   <hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><h3>Pulihkan dari backup</h3><input type="file" id="bkfile" accept=".json,application/json"><p style="margin-top:8px;color:var(--muted);font-size:14px">Data saat ini akan diganti.</p>
-  <hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><h3>Reset ke data contoh</h3><button class="btn danger" data-bk="reset">Reset semua data</button></div>`);
+  <hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><h3>Isi dengan data contoh</h3><p style="color:var(--muted);font-size:14px">Mengganti semua kategori, paket, artikel, dll di database dengan contoh awal.</p><button class="btn danger" data-bk="reset">Reset ke data contoh</button></div>`);
 }
 function adminView(sub,arg){
   if(!isAdmin()){document.body.classList.add('is-admin');return loginView()}
@@ -684,15 +726,15 @@ function render(){
   window.scrollTo(0,0);
   if(r==='tryout')tick();
   $('#nav').classList.remove('open');
-  const lf=$('#loginf');if(lf)lf.onsubmit=e=>{e.preventDefault();if(e.target.pw.value===S().password){sessionStorage.setItem('sw_admin','1');render()}else toast('Password salah',1)};
+  const lf=$('#loginf');if(lf)lf.onsubmit=async e=>{e.preventDefault();const b=lf.querySelector('.btn');b.disabled=true;const {error}=await sb.auth.signInWithPassword({email:lf.em.value.trim(),password:lf.pw.value});b.disabled=false;if(error)toast('Login gagal: email atau password salah',1);else{ADMIN=true;render()}};
   const sf=$('#setf');if(sf)sf.onsubmit=async e=>{e.preventDefault();try{
     const v=await readForm(sf,window._sf,S());const np=v.newPassword;delete v.newPassword;
-    if(np){if(np.length<6)throw new Error('Password minimal 6 karakter');v.password=np}
-    Object.assign(DB.settings,v);await save();render();toast('Pengaturan disimpan')}catch(err){toast(err.message,1)}};
+    if(np){if(np.length<6)throw new Error('Password minimal 6 karakter');const {error}=await sb.auth.updateUser({password:np});if(error)throw new Error(error.message)}
+    Object.assign(DB.settings,v);await save();render();toast(np?'Pengaturan dan password disimpan':'Pengaturan disimpan')}catch(err){toast(err.message,1)}};
   const bk=$('#bkfile');if(bk)bk.onchange=async()=>{try{
     const d=JSON.parse(await bk.files[0].text());if(!d.settings||!Array.isArray(d.categories)||!Array.isArray(d.packages))throw 0;
     if(!confirm('Ganti seluruh data dengan isi backup ini?'))return;
-    d.settings.password=DB.settings.password;DB=d;await load();await save();render();toast('Backup dipulihkan')}catch(e){toast('File backup tidak valid',1)}};
+    delete d.settings.password;const base=seed();DB={settings:{...base.settings,...d.settings}};KINDS.forEach(k=>DB[k]=d[k]||[]);await save();render();toast('Backup dipulihkan')}catch(e){toast('File backup tidak valid',1)}};
 }
 document.addEventListener('click',async e=>{
   const t=e.target.closest('button,a,.dd');if(!t)return;
@@ -709,12 +751,13 @@ document.addEventListener('click',async e=>{
     if(t.matches('[data-flag]')){T.flag.has(T.i)?T.flag.delete(T.i):T.flag.add(T.i);$('#view').innerHTML=tryoutView();tick();return}
     if(t.matches('[data-finish]'))return finishTryout();
   }
-  if(t.matches('[data-logout]')){e.preventDefault();sessionStorage.removeItem('sw_admin');location.hash='#/admin';render();return}
+  if(t.matches('[data-logout]')){e.preventDefault();await sb.auth.signOut();ADMIN=false;location.hash='#/admin';render();return}
   if(t.dataset.act)return adminAction(t.dataset.act,t.dataset.key,t.dataset.id);
   if(t.dataset.qact){const pid=location.hash.split('/')[3];return questionAction(t.dataset.qact,t.dataset.i,pid)}
   if(t.dataset.bk==='export'){const c=JSON.parse(JSON.stringify(DB));delete c.settings.password;download('sahwahita-backup-'+today()+'.json',JSON.stringify(c))}
-  if(t.dataset.bk==='reset'&&confirm('Reset SEMUA data ke contoh awal? Tindakan ini tidak bisa dibatalkan.')){DB=seed();await save();render();toast('Data direset')}
+  if(t.dataset.bk==='reset'&&confirm('Reset SEMUA data di database ke contoh awal? Tindakan ini tidak bisa dibatalkan.')){try{const sd=seed();DB={settings:{...sd.settings,...DB.settings}};KINDS.forEach(k=>DB[k]=sd[k]);await save();render();toast('Data contoh dimuat')}catch(err){toast(err.message,1);render()}}
 });
+window.addEventListener('unhandledrejection',e=>{e.preventDefault();toast((e.reason&&e.reason.message)||'Terjadi kesalahan',1);render()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 window.addEventListener('hashchange',render);
 load().then(render);
