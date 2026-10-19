@@ -158,6 +158,7 @@ footer .dis{font-size:13px;opacity:.75;border-top:1px solid rgba(255,255,255,.12
 .rv{padding:18px;margin-bottom:14px}
 .qimg{display:block;max-width:100%;max-height:420px;border-radius:10px;margin:10px 0;border:1px solid var(--line);background:#fff}
 .oimg{display:block;max-width:100%;max-height:200px;border-radius:8px;margin-top:6px}
+.opt small.pt{margin-left:auto;flex:0 0 auto;font-weight:700;font-size:12px;color:var(--muted);white-space:nowrap;align-self:center}
 .expl{margin-top:12px;background:#f3f8f9;border-left:4px solid var(--brand2);padding:10px 14px;border-radius:8px;font-size:15px}
 /* modal + toast */
 #modal{position:fixed;inset:0;background:rgba(10,30,38,.55);display:none;align-items:flex-start;justify-content:center;padding:4vh 16px;z-index:100;overflow:auto}
@@ -253,6 +254,17 @@ const para=t=>esc(t).split(/\n{2,}/).map(p=>'<p>'+p.replace(/\n/g,'<br>')+'</p>'
 const fdate=d=>{try{return new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}catch(e){return d||''}};
 const today=()=>new Date().toISOString().slice(0,10);
 const LET='ABCDE';
+/* ===== Penilaian SKD: TWK & TIU benar = 5 poin; TKP poin 1-5 per opsi; Passing Grade per sub tes ===== */
+const PG={TWK:65,TIU:80,TKP:166},PB=5;
+const secKey=s=>{const u=String(s||'').toUpperCase();return Object.keys(PG).find(k=>u.includes(k))||''};
+const qPoint=(q,a)=>a<0?0:Array.isArray(q.pts)?(+q.pts[a]||0):(a===q.ans?PB:0);
+const qMax=q=>Array.isArray(q.pts)?Math.max(...q.pts.map(Number)):PB;
+function parsePts(str){
+  const d=[null,null,null,null,null];let ok=false;
+  if(/[A-Ea-e]\s*=/.test(str)){for(const x of String(str).matchAll(/([A-Ea-e])\s*=\s*(\d+)/g)){d[LET.indexOf(x[1].toUpperCase())]=+x[2]}ok=true}
+  else{const n=String(str).split(/[\s,;]+/).filter(Boolean).map(Number);if(n.length===5&&n.every(v=>!isNaN(v))){n.forEach((v,i)=>d[i]=v);ok=true}}
+  return ok&&d.every(v=>v!==null)?d:null;
+}
 const imgs=a=>(a||[]).filter(Boolean).map(u=>`<img class="qimg" src="${esc(u)}" alt="" loading="lazy">`).join('');
 const oimg=u=>u?`<img class="oimg" src="${esc(u)}" alt="" loading="lazy">`:'';
 const hasOpt=(q,k)=>!!(q.opts[k]||(q.oimgs&&q.oimgs[k]));
@@ -489,22 +501,32 @@ function finishTryout(auto){
   T.done=true;clearInterval(TI);
   const qs=T.pkg.questions;let correct=0,wrong=0;const sec={};
   qs.forEach((q,i)=>{const s=q.sec||'Umum';sec[s]=sec[s]||{c:0,t:0};sec[s].t++;if(T.ans[i]===q.ans){correct++;sec[s].c++}else if(T.ans[i]>=0)wrong++});
-  const score=Math.round(correct/qs.length*100);
-  LAST={pkg:T.pkg,ans:T.ans,correct,wrong,blank:qs.length-correct-wrong,score,sec};
+  const skd={};qs.forEach((q,i)=>{const k=secKey(q.sec);if(!k)return;const o=skd[k]=skd[k]||{k,n:0,nilai:0,maks:0,pg:PG[k]};o.n++;o.nilai+=qPoint(q,T.ans[i]);o.maks+=qMax(q)});
+  const hasSkd=Object.keys(skd).length>0,total=Object.values(skd).reduce((a,o)=>a+o.nilai,0),totalMaks=Object.values(skd).reduce((a,o)=>a+o.maks,0),lulus=hasSkd&&Object.values(skd).every(o=>o.nilai>=o.pg);
+  const score=hasSkd?total:Math.round(correct/qs.length*100);
+  LAST={pkg:T.pkg,ans:T.ans,correct,wrong,blank:qs.length-correct-wrong,score,sec,skd:hasSkd?skd:null,total,totalMaks,lulus};
   const h=JSON.parse(localStorage.getItem('sw_hist')||'{}');h[T.pkg.id]=[{score,correct,total:qs.length,date:Date.now()},...(h[T.pkg.id]||[])].slice(0,5);
   try{localStorage.setItem('sw_hist',JSON.stringify(h))}catch(e){}
   T=null;location.hash='#/hasil/'+LAST.pkg.id;
+}
+function skdPanel(r){
+  const ds=Object.values(r.skd),gagal=ds.filter(o=>o.nilai<o.pg).map(o=>o.k);
+  return `<div class="card" style="margin-bottom:20px;text-align:center;border:2px solid ${r.lulus?'var(--ok)':'var(--bad)'}"><h2 style="margin:0;color:${r.lulus?'var(--ok)':'var(--bad)'}">${r.lulus?'LULUS':'BELUM LULUS'}</h2>
+    <p style="margin:6px 0 0;font-size:18px;font-weight:700">${r.lulus?'Selamat Anda Lulus':'Silahkan dicoba lagi sampai lulus'}</p>
+    ${r.lulus?'':`<p style="margin:6px 0 0;color:var(--muted)">Nilai di bawah Passing Grade: ${gagal.join(', ')}</p>`}</div>
+   <div class="grid g3" style="margin-bottom:20px">${ds.map(o=>`<div class="card stat"><span>${o.k}</span><b style="color:${o.nilai>=o.pg?'var(--ok)':'var(--bad)'}">${o.nilai}<small style="font-size:15px;color:var(--muted)"> / ${o.maks}</small></b><span>Passing Grade (PG): <strong>${o.pg}</strong> · ${o.nilai>=o.pg?'Memenuhi PG':'Di bawah PG'}</span></div>`).join('')}</div>`;
 }
 function resultView(){
   if(!LAST)return nf();
   const r=LAST,p=r.pkg;
   return crumb(`<a href="#/paket/${p.id}">${esc(p.title)}</a>`,'Hasil')+`<div class="wrap page"><h1>Hasil: ${esc(p.title)}</h1>
-   <div class="stats"><div class="card stat"><b>${r.score}</b><span>Skor (0–100)</span></div><div class="card stat"><b style="color:var(--ok)">${r.correct}</b><span>Benar</span></div><div class="card stat"><b style="color:var(--bad)">${r.wrong}</b><span>Salah</span></div><div class="card stat"><b style="color:var(--muted)">${r.blank}</b><span>Kosong</span></div></div>
+   ${r.skd?skdPanel(r):''}
+   <div class="stats"><div class="card stat"><b>${r.score}</b><span>${r.skd?'Total Poin (maks '+r.totalMaks+')':'Skor (0–100)'}</span></div><div class="card stat"><b style="color:var(--ok)">${r.correct}</b><span>Benar</span></div><div class="card stat"><b style="color:var(--bad)">${r.wrong}</b><span>Salah</span></div><div class="card stat"><b style="color:var(--muted)">${r.blank}</b><span>Kosong</span></div></div>
    ${Object.keys(r.sec).length>1?`<div class="row" style="margin-bottom:20px">${Object.entries(r.sec).map(([k,v])=>`<span class="tag" style="font-size:13px">${esc(k)}: ${v.c}/${v.t}</span>`).join('')}</div>`:''}
    <div class="row" style="margin-bottom:24px"><button class="btn accent" data-start="${p.id}">↻ Ulangi tryout</button><a class="btn ghost" href="#/paket/${p.id}">Kembali ke paket</a></div>
    <h2>Pembahasan</h2>${p.questions.map((q,i)=>`<div class="card rv"><div class="tqh"><span>Soal ${i+1}</span>${q.sec?`<span class="tag">${esc(q.sec)}</span>`:''}</div><div class="qtext" style="font-size:17px">${para(q.q)}${imgs(q.imgs)}</div>
-    <div class="opts">${q.opts.map((o,k)=>hasOpt(q,k)?`<div class="opt ${k===q.ans?'ok':r.ans[i]===k?'no':''}"><b>${LET[k]}</b><span>${esc(o)}${oimg(q.oimgs&&q.oimgs[k])}</span></div>`:'').join('')}</div>
-    <p style="margin:10px 0 0;font-size:14px;color:var(--muted)">Jawaban Anda: <b>${r.ans[i]>=0?LET[r.ans[i]]:'—'}</b> · Kunci: <b>${LET[q.ans]}</b></p>
+    <div class="opts">${q.opts.map((o,k)=>hasOpt(q,k)?`<div class="opt ${k===q.ans?'ok':r.ans[i]===k?'no':''}"><b>${LET[k]}</b><span>${esc(o)}${oimg(q.oimgs&&q.oimgs[k])}</span>${Array.isArray(q.pts)?`<small class="pt">+${q.pts[k]} poin</small>`:''}</div>`:'').join('')}</div>
+    <p style="margin:10px 0 0;font-size:14px;color:var(--muted)">Jawaban Anda: <b>${r.ans[i]>=0?LET[r.ans[i]]:'—'}</b> · ${Array.isArray(q.pts)?'Jawaban terbaik':'Kunci'}: <b>${LET[q.ans]}</b> · Poin Anda: <b>${qPoint(q,r.ans[i])}</b> / ${qMax(q)}</p>
     ${(q.expl||(q.eimgs&&q.eimgs.length))?`<div class="expl">${q.expl?para(q.expl):''}${imgs(q.eimgs)}</div>`:''}</div>`).join('')}</div>`;
 }
 
@@ -635,24 +657,25 @@ function soalView(id){
 }
 const QF=[{name:'sec',label:'Bagian (opsional)',hint:'Contoh: TWK, TIU, TKP. Dipakai untuk rekap skor.'},{name:'q',label:'Pertanyaan',type:'textarea',rows:4,hint:'Boleh dikosongkan jika soal hanya berupa gambar.'},{name:'qimg',label:'Gambar soal (opsional)',type:'image'},
  ...[...LET].flatMap((l,i)=>[{name:'o'+i,label:'Pilihan '+l},{name:'oimg'+i,label:'Gambar pilihan '+l+' (opsional)',type:'image'}]),
- {name:'ans',label:'Jawaban benar',type:'select',options:[...LET].map((l,i)=>[i,l])},{name:'expl',label:'Pembahasan (opsional)',type:'textarea',rows:3},{name:'eimg',label:'Gambar pembahasan (opsional)',type:'image'}];
+ {name:'ans',label:'Jawaban benar (TWK/TIU)',type:'select',options:[...LET].map((l,i)=>[i,l])},{name:'pts',label:'Poin per pilihan (khusus TKP, opsional)',hint:'Isi 5 angka untuk A–E, mis. 5,2,3,1,4. Kosongkan untuk TWK/TIU. Jika diisi, kunci otomatis = poin tertinggi.'},{name:'expl',label:'Pembahasan (opsional)',type:'textarea',rows:3},{name:'eimg',label:'Gambar pembahasan (opsional)',type:'image'}];
 function parseBulk(txt){
   const blocks=txt.replace(/\r/g,'').split(/\n\s*\n+/).map(b=>b.trim()).filter(Boolean),out=[],errs=[];
   blocks.forEach((b,bi)=>{
-    let q=[],opts=['','','','',''],ans=-1,expl='',sec='',cur='q',m;
+    let q=[],opts=['','','','',''],ans=-1,expl='',sec='',cur='q',m,pts=null;
     for(const ln of b.split('\n')){
       if((m=ln.match(/^\s*([A-Ea-e])[\.\)]\s+(.*)$/))){const k=LET.indexOf(m[1].toUpperCase());opts[k]=m[2].trim();cur='o'+k;continue}
-      if((m=ln.match(/^\s*jawaban\s*:\s*([A-Ea-e])/i))){ans=LET.indexOf(m[1].toUpperCase());cur='';continue}
+      if((m=ln.match(/^\s*poin\s*:\s*(.+)$/i))){const pt=parsePts(m[1]);if(pt){pts=pt;ans=pt.indexOf(Math.max(...pt))}cur='';continue}
+      if((m=ln.match(/^\s*jawaban\s*:\s*([A-Ea-e])/i))){if(!pts)ans=LET.indexOf(m[1].toUpperCase());cur='';continue}
       if((m=ln.match(/^\s*pembahasan\s*:\s*(.*)$/i))){expl=m[1];cur='e';continue}
       if((m=ln.match(/^\s*bagian\s*:\s*(.*)$/i))){sec=m[1].trim();cur='';continue}
       if(cur==='q')q.push(ln);else if(cur==='e')expl+='\n'+ln;else if(cur[0]==='o')opts[+cur[1]]+=' '+ln.trim();
     }
     const qt=q.join('\n').trim().replace(/^\d+[\.\)]\s*/,'');
-    if(!qt||opts.filter(Boolean).length<2||ans<0||!opts[ans])errs.push(bi+1);else out.push({sec,q:qt,opts,ans,expl:expl.trim()});
+    if(!qt||opts.filter(Boolean).length<2||ans<0||!opts[ans])errs.push(bi+1);else out.push({sec,q:qt,opts,ans,expl:expl.trim(),...(pts?{pts}:{})});
   });
   return{out,errs};
 }
-const toBulk=qs=>qs.map(q=>[q.q,...q.opts.map((o,i)=>o?`${LET[i]}. ${o}`:null).filter(Boolean),`Jawaban: ${LET[q.ans]}`,q.sec?`Bagian: ${q.sec}`:null,q.expl?`Pembahasan: ${q.expl}`:null].filter(Boolean).join('\n')).join('\n\n');
+const toBulk=qs=>qs.map(q=>[q.q,...q.opts.map((o,i)=>o?`${LET[i]}. ${o}`:null).filter(Boolean),`Jawaban: ${LET[q.ans]}`,Array.isArray(q.pts)?`Poin: ${q.pts.map((v,i)=>LET[i]+'='+v).join(',')}`:null,q.sec?`Bagian: ${q.sec}`:null,q.expl?`Pembahasan: ${q.expl}`:null].filter(Boolean).join('\n')).join('\n\n');
 function settingsView(){
   const f=[{name:'siteName',label:'Nama website',req:1},{name:'tagline',label:'Tagline'},{name:'logo',label:'Logo (opsional)',type:'image'},
    {name:'heroBadge',label:'Beranda: label kecil'},{name:'heroTitle',label:'Beranda: judul besar'},{name:'heroSub',label:'Beranda: sub judul',type:'textarea',rows:3},{name:'heroBtn',label:'Beranda: teks tombol'},
@@ -707,10 +730,11 @@ async function adminAction(a,key,id){
 async function questionAction(a,i,pid){
   const p=byId(DB.packages,pid),qs=p.questions;
   if(a==='add'||a==='edit'){
-    const q=a==='edit'?qs[+i]:null,vals=q?{sec:q.sec,q:q.q,ans:q.ans,expl:q.expl,qimg:(q.imgs||[])[0]||'',eimg:(q.eimgs||[])[0]||'',...Object.fromEntries(q.opts.map((o,k)=>['o'+k,o])),...Object.fromEntries([0,1,2,3,4].map(k=>['oimg'+k,(q.oimgs||[])[k]||'']))}:{ans:0};
+    const q=a==='edit'?qs[+i]:null,vals=q?{sec:q.sec,q:q.q,ans:q.ans,pts:Array.isArray(q.pts)?q.pts.join(','):'',expl:q.expl,qimg:(q.imgs||[])[0]||'',eimg:(q.eimgs||[])[0]||'',...Object.fromEntries(q.opts.map((o,k)=>['o'+k,o])),...Object.fromEntries([0,1,2,3,4].map(k=>['oimg'+k,(q.oimgs||[])[k]||'']))}:{ans:0};
     formModal({title:q?'Edit soal':'Tambah soal',fields:QF,values:vals,wide:1,onSave:async v=>{
-      const n={sec:v.sec,q:v.q,opts:[0,1,2,3,4].map(k=>v['o'+k]),oimgs:[0,1,2,3,4].map(k=>v['oimg'+k]||''),ans:+v.ans,expl:v.expl,
+      const n={sec:v.sec,q:v.q,opts:[0,1,2,3,4].map(k=>v['o'+k]),oimgs:[0,1,2,3,4].map(k=>v['oimg'+k]||''),ans:+v.ans,pts:null,expl:v.expl,
         imgs:[v.qimg,...((q&&q.imgs)||[]).slice(1)].filter(Boolean),eimgs:[v.eimg,...((q&&q.eimgs)||[]).slice(1)].filter(Boolean)};
+      if(String(v.pts||'').trim()){const pt=parsePts(v.pts);if(!pt)throw new Error('Poin TKP harus 5 angka untuk A–E, mis. 5,2,3,1,4');n.pts=pt;n.ans=pt.indexOf(Math.max(...pt))}
       if(!n.q&&!n.imgs.length)throw new Error('Isi teks soal atau unggah gambar soal');
       if(n.opts.filter((o,k)=>o||n.oimgs[k]).length<2)throw new Error('Minimal 2 pilihan jawaban (teks atau gambar)');
       if(!n.opts[n.ans]&&!n.oimgs[n.ans])throw new Error('Pilihan untuk jawaban benar tidak boleh kosong');
@@ -748,23 +772,25 @@ async function parseDocx(file,defSec){
     im:[...e.querySelectorAll('img')].map(i=>i.getAttribute('src')).filter(u=>{if(OKIMG.test(u))return true;skipped++;return false})}));
   const hasNum=lines.some(l=>/^\d+\s*[.)]\s/.test(l.t));
   const out=[],warn=[];let cur=null,pend=defSec||'';
-  const fresh=()=>({sec:pend,q:[],qi:[],opts:['','','','',''],oi:['','','','',''],ans:-1,expl:[],ei:[],mode:'q',last:-1});
+  const fresh=()=>({sec:pend,q:[],qi:[],opts:['','','','',''],oi:['','','','',''],ans:-1,expl:[],ei:[],mode:'q',last:-1,pts:null});
   const flush=()=>{
     if(!cur)return;const c=cur;cur=null;
     const stem=c.q.join('\n').trim(),n=out.length+warn.length+1;
     const ok=k=>c.opts[k]||c.oi[k];
     if((!stem&&!c.qi.length)||[0,1,2,3,4].filter(ok).length<2||c.ans<0||!ok(c.ans)){warn.push(n);return}
-    out.push({sec:c.sec,q:stem,imgs:c.qi,opts:c.opts.map(o=>o.trim()),oimgs:c.oi.map(x=>x||''),ans:c.ans,expl:c.expl.join('\n').trim(),eimgs:c.ei});
+    out.push({sec:c.sec,q:stem,imgs:c.qi,opts:c.opts.map(o=>o.trim()),oimgs:c.oi.map(x=>x||''),ans:c.ans,expl:c.expl.join('\n').trim(),eimgs:c.ei,...(c.pts?{pts:c.pts}:{})});
   };
   for(const L of lines){
     const t=L.t;let m;
     if(!t&&!L.im.length){if(cur&&cur.ans>=0)flush();continue}
+    if((m=t.match(/^\[\s*(TWK|TIU|TKP)\s*\]$/i))){flush();pend=m[1].toUpperCase();continue}
     if((m=t.match(/^(?:bagian|kategori)\s*[:=]\s*(.+)$/i))){if(cur)cur.sec=m[1].trim();else pend=m[1].trim();continue}
     if((m=t.match(/^(\d+)\s*[.)]\s*(.*)$/))&&(!cur||cur.ans>=0||cur.last>=1)){
       flush();cur=fresh();cur.mode='q';if(m[2])cur.q.push(m[2]);cur.qi.push(...L.im);continue}
     if(!cur){if(hasNum)continue;cur=fresh()}
     if(cur.mode!=='e'&&(m=t.match(/^([A-Ea-e])\s*[.)]\s*(.*)$/))&&LET.indexOf(m[1].toUpperCase())>cur.last&&(cur.q.length||cur.qi.length||cur.last>=0)){
       const k=LET.indexOf(m[1].toUpperCase());cur.last=k;cur.mode='o';cur.opts[k]=m[2];if(L.im.length)cur.oi[k]=L.im[0];continue}
+    if((m=t.match(/^poin\s*[:=]\s*(.+)$/i))){const pt=parsePts(m[1]);if(pt){cur.pts=pt;cur.ans=pt.indexOf(Math.max(...pt))}cur.mode='a';continue}
     if((m=t.match(/^(?:jawaban|kunci)(?:\s+benar)?\s*[:=]\s*([A-Ea-e])/i))){cur.ans=LET.indexOf(m[1].toUpperCase());cur.mode='a';cur.ei.push(...L.im);continue}
     if((m=t.match(/^(?:pembahasan|penjelasan)\s*[:=]?\s*(.*)$/i))){cur.mode='e';if(m[1])cur.expl.push(m[1]);cur.ei.push(...L.im);continue}
     if(cur.mode==='q'){if(t)cur.q.push(t);cur.qi.push(...L.im)}
