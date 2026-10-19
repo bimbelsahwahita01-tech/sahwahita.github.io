@@ -810,7 +810,7 @@ async function docxToQuestions(file,defSec){
   r.qs.forEach(q=>{q.imgs=mp(q.imgs);q.oimgs=q.oimgs.map(u=>u?map[u]||u:'');q.eimgs=mp(q.eimgs)});
   return r;
 }
-const wordNote={name:'n',type:'note',html:'<b>Format di Word</b> (ketik manual, jangan pakai penomoran otomatis):<br>1. Teks soal… (gambar boleh disisipkan langsung di bawahnya)<br>A. Pilihan A (gambar boleh)<br>B. Pilihan B<br>… sampai E.<br>Jawaban: B<br>Pembahasan: …(opsional, gambar boleh)<br>Bagian: TWK (opsional)<br>Pisahkan antar soal dengan baris kosong atau cukup mulai nomor berikutnya.'};
+const wordNote={name:'n',type:'note',html:'<b>Format di Word</b> (ketik manual, jangan pakai penomoran otomatis):<br>1. Teks soal… (gambar boleh disisipkan langsung di bawahnya)<br>A. Pilihan A (gambar boleh)<br>B. Pilihan B<br>… sampai E.<br>Jawaban: B<br>Pembahasan: …(opsional, gambar boleh)<br>Bagian: TWK (opsional) atau judul bagian satu baris: [TWK], [TIU], [TKP]<br><b>TKP:</b> ganti baris Jawaban dengan <b>Poin: A=5,B=2,C=3,D=1,E=4</b> (versi 2: mendukung TKP)<br>Pisahkan antar soal dengan baris kosong atau cukup mulai nomor berikutnya.'};
 const doneMsg=r=>`${r.qs.length} soal masuk`+(r.warn.length?`, soal ke-${r.warn.join(', ')} dilewati (format kurang lengkap)`:'')+(r.skipped?`, ${r.skipped} gambar tidak didukung (EMF/WMF), sisipkan ulang sebagai PNG/JPG`:'');
 function wordImportModal(pkg){
   formModal({title:'Impor soal dari Word (.docx)',wide:1,saveText:'Impor',fields:[
